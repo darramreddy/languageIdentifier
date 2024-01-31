@@ -1,7 +1,8 @@
 import os
 import re
 import sys
-from collections import defaultdict
+from collections import Counter
+from queue import PriorityQueue
 
 def removeSGML(input_string: str):
     # remove all text between the < > and those characters themselves
@@ -183,71 +184,93 @@ def tokenizeText(input_string):
     return final_tokens
 
 def calculate_pair_freqs(tokens, vocab, all_tokens):
-    pairs = {}
+    pairs = Counter()
     most_freq_word = ""
-    first_freq = ""
-    second_freq = ""
     highest_freq = -1
+
+    # Create a set for faster membership checks
+    vocab_set = set(vocab.keys())
+
     for first in vocab:
         for second in vocab:
-            curr_pair = first+second
-            if curr_pair in vocab:
-                pass
-            elif curr_pair in all_tokens.keys():
+            curr_pair = first + second
+            if curr_pair not in vocab_set and curr_pair in all_tokens:
                 pairs[curr_pair] = all_tokens[curr_pair]
                 if pairs[curr_pair] > highest_freq:
                     highest_freq = pairs[curr_pair]
                     most_freq_word = curr_pair
-                    first_freq = first
-                    second_freq = second
-            else:
-                if curr_pair not in pairs.keys():
-                    for token in tokens:
-                        curr_freq = token.count(curr_pair)
-                        if curr_pair in pairs.keys():
-                            pairs[curr_pair] += curr_freq
-                            if pairs[curr_pair] > highest_freq:
-                                highest_freq = pairs[curr_pair]
-                                most_freq_word = curr_pair
-                                first_freq = first
-                                second_freq = second
-                        else:
-                            pairs[curr_pair] = curr_freq
-                            if pairs[curr_pair] > highest_freq:
-                                highest_freq = pairs[curr_pair]
-                                most_freq_word = curr_pair
-                                first_freq = first
-                                second_freq = second
-    return pairs, most_freq_word, first_freq, second_freq
+            elif curr_pair not in vocab_set and curr_pair not in pairs:
+                curr_freq = sum(token.count(curr_pair) for token in tokens)
+                pairs[curr_pair] = curr_freq
+                if curr_freq > highest_freq:
+                    highest_freq = curr_freq
+                    most_freq_word = curr_pair
+
+    return pairs, most_freq_word
 
 def BPE(tokens, vocab_size):
-    vocab = {}
-    all_tokens = {}
+    vocab = Counter()
+    all_tokens = Counter()
     merge_rules = []
 
     for token in tokens:
-        for char in token:
-            if char in vocab.keys():
-                vocab[char] += 1
-            else:
-                vocab[char] = 1
-            if char in all_tokens.keys():
-                vocab[char] += 1
-            else:
-                vocab[char] = 1
-    
-    for _ in range(vocab_size - len(vocab.keys())):
-        pairs, most_freq_word, first, second = calculate_pair_freqs(tokens, vocab.keys(), all_tokens)
+        vocab.update(token)
+        all_tokens.update(token)
 
-        for pair in pairs.keys():
-            if pair not in all_tokens.keys():
-                all_tokens[pair] = pairs[pair]
-        
+    for _ in range(vocab_size - len(vocab)):
+        pairs, most_freq_word = calculate_pair_freqs(tokens, vocab, all_tokens)
+
+        all_tokens.update(pairs)
+
+        first, second = most_freq_word[:1], most_freq_word[1:]
         merge_rules.append([first, second])
         vocab[most_freq_word] = pairs[most_freq_word]
-        vocab[first] -= pairs[most_freq_word]
-        vocab[second] -= pairs[most_freq_word]
-        print(most_freq_word + " is new word and curr size is " + str(len(vocab.keys()))+ "\n")
+        vocab.subtract({first: pairs[most_freq_word], second: pairs[most_freq_word]})
+
+        print(most_freq_word + " is the new word, and the current size is " + str(len(vocab)) + "\n")
+
+    return vocab, merge_rules
+
+def BPE2(tokens, vocab_size):
+    vocab = Counter()
+    all_tokens = Counter()
+    merge_rules = []
+
+    for token in tokens:
+        vocab.update(token)
+        all_tokens.update(token)
+
+    priority_queue = PriorityQueue()
+
+    for _ in range(vocab_size - len(vocab)):
+        # Use a priority queue for efficient retrieval of the most frequent pair
+        priority_queue.queue.clear()
+        pairs_checked = set()
+        for first in vocab:
+            for second in vocab:
+                curr_pair = first + second
+                if curr_pair not in vocab and curr_pair not in all_tokens and curr_pair not in pairs_checked:
+                    pairs_checked.add(curr_pair)
+                    curr_freq = sum(token.count(curr_pair) for token in tokens)
+                    all_tokens.update({curr_pair: curr_freq})
+                    priority_queue.put((-curr_freq, curr_pair))
+                elif curr_pair not in vocab and curr_pair in all_tokens:
+                    pairs_checked.add(curr_pair)
+                    curr_freq = all_tokens[curr_pair]
+                    priority_queue.put((-curr_freq, curr_pair))
+        pairs_checked.clear()
+
+        most_freq_word = priority_queue.get()[1]
+
+        first, second = most_freq_word[:1], most_freq_word[1:]
+        merge_rules.append([first, second])
+        vocab[most_freq_word] = all_tokens[most_freq_word]
+        vocab.subtract({first: all_tokens[most_freq_word], second: all_tokens[most_freq_word]})
+
+        print(most_freq_word + " is the new word, and the current size is " + str(len(vocab)) + "\n")
+
+        # Call calculate_pair_freqs to update all_tokens and pairs
+        calculate_pair_freqs(tokens, vocab, all_tokens)
 
     return vocab, merge_rules
 
@@ -285,7 +308,7 @@ if __name__ == "__main__":
 
         all_tokens.extend(tokens)
 
-    final_vocab, merge_rules = BPE(all_tokens, vocab_size)
+    final_vocab, merge_rules = BPE2(all_tokens, vocab_size)
 
     total_merge_rules = len(merge_rules)
     first_20_merge_rules = merge_rules[:20]
@@ -298,7 +321,7 @@ if __name__ == "__main__":
         output_file.write(f"Tokens {len(final_vocab)} Merge rules {total_merge_rules}\n")
         output_file.write("The first 20 merge rules\n")
         for rule in first_20_merge_rules:
-            output_file.write(f"{rule[0]} -> {rule[1]}\n")
+            output_file.write(f"{rule[0]} + {rule[1]}\n")
         output_file.write("Top 50 tokens\n")
         for token, frequency in top_50_tokens:
             output_file.write(f"{token} [{frequency}]\n")
