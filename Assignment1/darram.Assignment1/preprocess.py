@@ -241,12 +241,25 @@ def BPE(tokens, vocab_size):
             if pair not in all_tokens.keys():
                 all_tokens[pair] = pairs[pair]
         
-        merge_rules.append(most_freq_word)
+        merge_rules.append([first, second])
         vocab[most_freq_word] = pairs[most_freq_word]
         vocab[first] -= pairs[most_freq_word]
         vocab[second] -= pairs[most_freq_word]
 
     return vocab, merge_rules
+
+def most_frequent_50_tokens(tokens):
+    token_counts = {}
+
+    for token in tokens:
+        if token in token_counts:
+            token_counts[token] += 1
+        else:
+            token_counts[token] = 1
+
+    sorted_strings = sorted(token_counts.items(), key=lambda x: x[1], reverse=True)[:50]
+
+    return sorted_strings
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
@@ -274,12 +287,14 @@ if __name__ == "__main__":
     total_merge_rules = len(merge_rules)
     first_20_merge_rules = merge_rules[:20]
 
+    top_50_tokens = most_frequent_50_tokens(all_tokens)
+
     # Write results to preprocess.output
     with open('preprocess.output', 'w') as output_file:
         output_file.write(f"Tokens {len(final_vocab)} Merge rules {total_merge_rules}\n")
         output_file.write("The first 20 merge rules\n")
         for rule in first_20_merge_rules:
             output_file.write(f"{rule[0]} -> {rule[1]}\n")
-        #output_file.write("Top 50 tokens\n")
-        #for token, frequency in top_50_tokens:
-            #output_file.write(f"{token} [{frequency}]\n")
+        output_file.write("Top 50 tokens\n")
+        for token, frequency in top_50_tokens:
+            output_file.write(f"{token} [{frequency}]\n")
