@@ -191,7 +191,9 @@ def calculate_pair_freqs(tokens, vocab, all_tokens):
     for first in vocab:
         for second in vocab:
             curr_pair = first+second
-            if curr_pair in all_tokens.keys():
+            if curr_pair in vocab:
+                pass
+            elif curr_pair in all_tokens.keys():
                 pairs[curr_pair] = all_tokens[curr_pair]
                 if pairs[curr_pair] > highest_freq:
                     highest_freq = pairs[curr_pair]
@@ -234,7 +236,7 @@ def BPE(tokens, vocab_size):
             else:
                 vocab[char] = 1
     
-    while(len(vocab.keys()) < vocab_size):
+    for _ in range(vocab_size - len(vocab.keys())):
         pairs, most_freq_word, first, second = calculate_pair_freqs(tokens, vocab.keys(), all_tokens)
 
         for pair in pairs.keys():
@@ -245,6 +247,7 @@ def BPE(tokens, vocab_size):
         vocab[most_freq_word] = pairs[most_freq_word]
         vocab[first] -= pairs[most_freq_word]
         vocab[second] -= pairs[most_freq_word]
+        print(most_freq_word + " is new word and curr size is " + str(len(vocab.keys()))+ "\n")
 
     return vocab, merge_rules
 
@@ -288,6 +291,7 @@ if __name__ == "__main__":
     first_20_merge_rules = merge_rules[:20]
 
     top_50_tokens = most_frequent_50_tokens(all_tokens)
+    print("Total number of tokens is:" + str(len(all_tokens)))
 
     # Write results to preprocess.output
     with open('preprocess.output', 'w') as output_file:
