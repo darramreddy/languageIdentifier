@@ -1,8 +1,7 @@
 import os
 import re
 import sys
-from collections import Counter
-from queue import PriorityQueue
+from collections import defaultdict
 
 def removeSGML(input_string: str):
     # remove all text between the < > and those characters themselves
@@ -183,7 +182,7 @@ def tokenizeText(input_string):
         final_tokens.append(current_token)
     return final_tokens
 
-def calculate_pair_freqs(tokens_dict, vocab, all_tokens):
+def calculate_pair_freqs(tokens_dict, vocab, all_tokens, cache, last_pair, locations):
     pairs = {}
     most_freq_word = ""
     highest_freq = -1
@@ -198,6 +197,23 @@ def calculate_pair_freqs(tokens_dict, vocab, all_tokens):
             curr_pair = first + second
             if curr_pair in vocab_set:
                 pass
+            elif all_tokens[first] == 0 or all_tokens[second] == 0 :
+                all_tokens[curr_pair] = 0
+                pairs[curr_pair] = 0
+            elif first == last_pair or second == last_pair :
+                pairs_checked.append(curr_pair)
+                pairs[curr_pair] = 0
+                for token in cache:
+                    curr_freq = token.count(curr_pair) * tokens_dict[token]
+                    if(curr_freq > 0):
+                        locations[curr_pair].append(token)
+                    pairs[curr_pair] += curr_freq
+                all_tokens[curr_pair] = pairs[curr_pair]
+                if pairs[curr_pair] > highest_freq:
+                    highest_freq = pairs[curr_pair]
+                    most_freq_word = curr_pair
+                    first_word = first
+                    second_word = second
             elif curr_pair in all_tokens.keys():
                 pairs[curr_pair] = all_tokens[curr_pair]
                 if pairs[curr_pair] > highest_freq:
@@ -208,8 +224,14 @@ def calculate_pair_freqs(tokens_dict, vocab, all_tokens):
             elif curr_pair not in pairs_checked:
                 pairs_checked.append(curr_pair)
                 pairs[curr_pair] = 0
-                for token in tokens_dict.keys():
+                if(len(locations[first]) > len(locations[second])):
+                    area_to_check = locations[second]
+                else:
+                    area_to_check = locations[first]
+                for token in area_to_check:
                     curr_freq = token.count(curr_pair) * tokens_dict[token]
+                    if(curr_freq > 0):
+                        locations[curr_pair].append(token)
                     pairs[curr_pair] += curr_freq
                 all_tokens[curr_pair] = pairs[curr_pair]
                 if pairs[curr_pair] > highest_freq:
@@ -217,14 +239,20 @@ def calculate_pair_freqs(tokens_dict, vocab, all_tokens):
                     most_freq_word = curr_pair
                     first_word = first
                     second_word = second
+    
+    cache.clear()
+    for token in tokens_dict.keys():
+        if token.count(most_freq_word) > 0:
+            cache.append(token)
 
-    return pairs, most_freq_word, first_word, second_word
+    return pairs, most_freq_word, first_word, second_word, cache, locations
 
 def BPE(tokens, vocab_size):
     vocab = {}
     all_tokens = {}
     merge_rules = []
     tokens_dict = {}
+    locations = defaultdict(list)
 
     for token in tokens:
         for char in token:
@@ -232,18 +260,20 @@ def BPE(tokens, vocab_size):
                 vocab[char] += 1
             else:
                 vocab[char] = 1
-            if char in all_tokens.keys():
-                vocab[char] += 1
-            else:
-                vocab[char] = 1
+            locations[char].append(token)
         if token in tokens_dict.keys():
             tokens_dict[token] += 1
         else:
             tokens_dict[token] = 1
     
+    all_tokens = vocab.copy()
+    cache = []
+    last_pair = ""
+
     for _ in range(vocab_size - len(vocab.keys())):
-        pairs, most_freq_word, first, second = calculate_pair_freqs(tokens_dict, vocab.keys(), all_tokens)
+        pairs, most_freq_word, first, second, cache, locations = calculate_pair_freqs(tokens_dict, vocab.keys(), all_tokens, cache, last_pair, locations)
         
+        last_pair = most_freq_word
         merge_rules.append([first, second])
         vocab[most_freq_word] = pairs[most_freq_word]
         vocab[first] -= pairs[most_freq_word]
